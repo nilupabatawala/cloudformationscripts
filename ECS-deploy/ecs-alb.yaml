@@ -1,0 +1,74 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  create ALB and target groups 
+
+Resources:
+
+
+  ELBSecurityGroup:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+            GroupDescription: 'Allow Port 80'
+            VpcId: !ImportValue VPCId
+            SecurityGroupIngress:
+                - IpProtocol: tcp
+                  FromPort: 80
+                  ToPort: 80
+                  CidrIp: 0.0.0.0/0
+   
+  ECSTargetGroup:
+      Type: AWS::ElasticLoadBalancingV2::TargetGroup
+      Properties:
+        HealthCheckEnabled: true
+        HealthCheckPort: 8081
+        HealthCheckProtocol: HTTP
+        Port: 8081
+        Protocol: HTTP
+        TargetType: ip
+        VpcId: !ImportValue VPCId
+
+  ApplicationLoadBalancer:
+      Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+      Properties:
+        Scheme: internet-facing 
+        Subnets:
+        - !ImportValue PublicSubnet1
+        - !ImportValue PublicSubnet2
+        SecurityGroups:
+        - Ref: ELBSecurityGroup
+
+  ALBListener:
+      Type: AWS::ElasticLoadBalancingV2::Listener
+      Properties:
+        DefaultActions:
+          - Order: 1
+            Type: forward
+            TargetGroupArn:
+              Ref: ECSTargetGroup
+        LoadBalancerArn:
+            Ref: ApplicationLoadBalancer
+        Port: 80
+        Protocol: HTTP
+      DependsOn:
+        - ECSTargetGroup
+      
+Output:
+
+  ELBSecurityGroup:
+    Description: Application Load Balancer Security Group
+    Value: !Ref 'ELBSecurityGroup'
+    Export:
+      Name: ELBSecurityGroup
+
+  ECSTargetGroup:
+    Description: Application Load Balancer Taget Group
+    Value: !Ref 'ECSTargetGroup'
+    Export:
+      Name: ECSTargetGroup
+    
+  ApplicationLoadBalancer:
+    Description: Application Load Balancer 
+    Value: !Ref 'ApplicationLoadBalancer'
+    Export:
+      Name: ApplicationLoadBalancer
+    

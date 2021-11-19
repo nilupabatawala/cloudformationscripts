@@ -1,0 +1,222 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  create a VPC with an Elastic IP address, Internet Gateway, NAT gateway, subnet, routes, load balancers 
+  and target groups. 
+
+Mappings:
+  CidrConfig:
+    VPC1:
+      CIDR: '10.0.0.0/16'
+    PublicSub1:
+      CIDR: '10.0.0.0/24'
+    PublicSub2: 
+      CIDR: '10.0.1.0/24'
+    PrivateSub1:
+      CIDR: '10.0.2.0/24'
+    PrivateSub2:
+      CIDR: '10.0.3.0/24'
+ 
+Resources:
+# Create VPC
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: !FindInMap [ 'CidrConfig', 'VPC1', 'CIDR' ]
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+      Tags:
+        - Key: Application
+          Value: !Ref 'AWS::StackId'
+        - Key: Name
+          Value: FG-VPC
+# Create Public Subnet 1
+  PubSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !FindInMap [ 'CidrConfig', 'PublicSub1', 'CIDR' ]
+      AvailabilityZone:
+        Fn::Select:
+        - 0
+        - Fn::GetAZs: {Ref: 'AWS::Region'}
+      Tags:
+        - Key: Application
+          Value: !Ref 'AWS::StackId'
+        - Key: Name
+          Value: FG-Public-Subnet-1
+# Create Public Subnet 2  
+  PubSubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !FindInMap [ 'CidrConfig', 'PublicSub2', 'CIDR' ]
+      AvailabilityZone:
+        Fn::Select:
+        - 2
+        - Fn::GetAZs: {Ref: 'AWS::Region'}
+      Tags:
+        - Key: Application
+          Value: !Ref 'AWS::StackId'
+        - Key: Name
+          Value: FG-Public-Subnet-2
+  # Create Private Subnet 1
+  PrivSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !FindInMap [ 'CidrConfig', 'PrivateSub1', 'CIDR' ]
+      AvailabilityZone:
+        Fn::Select:
+        - 0
+        - Fn::GetAZs: {Ref: 'AWS::Region'}
+      Tags:
+        - Key: Application
+          Value: !Ref 'AWS::StackId'
+        - Key: Name
+          Value: FG-Private-Subnet-1
+  # Create Private Subnet 2
+  PrivSubnet2:
+     Type: 'AWS::EC2::Subnet'
+     Properties:
+       VpcId: !Ref VPC
+       CidrBlock: !FindInMap [ 'CidrConfig', 'PrivateSub2', 'CIDR' ]
+       AvailabilityZone:
+        Fn::Select: 
+        - 2
+        - Fn::GetAZs: {Ref: 'AWS::Region'}
+       Tags:
+         - Key: Application
+           Value: !Ref 'AWS::StackId'
+         - Key: Name
+           Value: FG-Private-Subnet-2
+# Create Internet Gateway
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+        - Key: Application
+          Value: !Ref 'AWS::StackId'
+        - Key: Name
+          Value: FG-IGW
+  # Attach Gateway to VPC
+  AttachGateway:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+  # Create public route table
+  PubRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:  
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Application
+          Value: !Ref 'AWS::StackId'
+        - Key: Name
+          Value: FG-Public_Route
+  # Create private route table
+  PrivRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Application
+          Value: !Ref 'AWS::StackId'
+        - Key: Name
+          Value: FG-Private-Route
+  # Associate Public subnet 1 to public route table
+  PubSubnetRouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PubSubnet1
+      RouteTableId: !Ref PubRouteTable
+  
+  # Associate Public subnet 1 to public route table
+  PubSubnetRouteTableAssociation1:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PubSubnet2
+      RouteTableId: !Ref PubRouteTable
+  
+  # Associate Private subnet 1 to private route table
+  PrivSubnetRouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PrivSubnet1
+      RouteTableId: !Ref PrivRouteTable
+  
+  # Associate Private subnet 2 to private route table
+  PrivSubnetRouteTableAssociation1:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PrivSubnet2
+      RouteTableId: !Ref PrivRouteTable
+
+  # Create a NAT gateway in public subnet 1
+  NAT:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId:
+        Fn::GetAtt:
+        - EIP
+        - AllocationId
+      SubnetId:
+         Ref: PubSubnet1
+      Tags:
+      - Key: stack
+        Value: production
+      - Key: Name
+        Value: FG-NAT-GW
+  EIP:
+    DependsOn: AttachGateway
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: VPC
+
+  # Create route entry in private route table to route traffic to NAT gateway
+  Route1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId:
+        Ref: PrivRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId:
+        Ref: NAT
+  # Create route entry in public route table to traffic via internet gateway to outside
+  Route2:
+    Type: 'AWS::EC2::Route'
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: 
+        Ref: PubRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: 
+        Ref: InternetGateway
+
+Outputs:
+  VPCId:
+    Description: The ID of the VPC that this stak deployed in
+    Value: !Ref 'VPC'
+    Export:
+      Name: VPCId
+  PublicSubnet1:
+    Description: The ID of Public Subnet 1
+    Value: !Ref 'PubSubnet1'
+    Export:
+      Name: PublicSubnet1
+  PublicSubnet2:
+    Description: The ID of Public Subnet 1
+    Value: !Ref 'PubSubnet2'
+    Export:
+      Name: PublicSubnet2
+  PrivateSubnet1:
+    Description: The ID of Public Subnet 1
+    Value: !Ref 'PrivSubnet1'
+    Export:
+      Name: PrivateSubnet1
+  PrivateSubnet2:
+    Description: The ID of Public Subnet 1
+    Value: !Ref 'PrivSubnet2'
+    Export:
+      Name: PrivateSubnet2
+

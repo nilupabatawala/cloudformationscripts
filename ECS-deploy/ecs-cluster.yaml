@@ -1,0 +1,84 @@
+Parameters:
+  VpcStack:
+    Type: String
+    Description: Name of VPC stack to build off of
+    Default: vpc-stack
+
+  EcsClusterStack:
+    Type: String
+    Description: Name of ECS Cluster stack to build off of
+    Default: ecs-cluster-stack
+
+  Image:
+    Type: String
+    Description: URI of image you would like to use
+
+Resources:
+  
+  FargateService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster:
+        Fn::ImportValue: !Sub ${EcsClusterStack}-ecs-cluster
+      DeploymentController:
+        Type: ECS
+      DesiredCount: 1
+      HealthCheckGracePeriodSeconds: 60
+      LaunchType: FARGATE
+      LoadBalancers:
+        -
+          ContainerName: pythonapp
+          ContainerPort: 8181
+          TargetGroupArn: !Ref TargetGroup
+      NetworkConfiguration:
+          AwsvpcConfiguration:
+            SecurityGroups:
+              -
+                Fn::ImportValue: !Sub ${EcsClusterStack}-default-security-group
+            Subnets:
+              -
+                Fn::ImportValue: PrivateSubnet1
+              -
+                Fn::ImportValue: PrivateSubnet2
+      TaskDefinition: !Ref FargateServiceTaskDefinition
+
+  FargateServiceLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 7
+
+  FargateServiceTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+        -
+          Name: hello-world
+          Essential: true
+          Image: !Ref Image
+          LogConfiguration:
+              LogDriver: awslogs
+              Options:
+                awslogs-group: !Ref FargateServiceLogGroup
+                awslogs-stream-prefix: hello-world-container
+                awslogs-region: !Ref AWS::Region
+          PortMappings:
+            -
+              ContainerPort: 8081
+              HostPort: 8081
+              Protocol: tcp
+      Cpu: '256'
+      ExecutionRoleArn:
+        Fn::ImportValue: !Sub ${EcsClusterStack}-default-role
+      Memory: '512'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        -  FARGATE
+      TaskRoleArn:
+        Fn::ImportValue: !Sub ${EcsClusterStack}-default-role
+
+Outputs:
+  FargateServiceName:
+    Description: A reference to the created Fargate Service
+    Value: !GetAtt FargateService.Name
+    Export:
+      Name: !Sub ${AWS::StackName}-fargate-service-name
