@@ -15,6 +15,18 @@ Resources:
                   FromPort: 80
                   ToPort: 80
                   CidrIp: 0.0.0.0/0
+
+  ECSFargateContainersSG:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: SG for traffic between ALB and containers
+      GroupName: ECSFargateContainersSG
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          SourceSecurityGroupId: !GetAtt ELBSecurityGroup.GroupId
+          Description: 'Inbound rule for all traffic'
    
   ECSTargetGroup:
       Type: AWS::ElasticLoadBalancingV2::TargetGroup
@@ -35,7 +47,7 @@ Resources:
         - !ImportValue PublicSubnet1
         - !ImportValue PublicSubnet2
         SecurityGroups:
-        - Ref: ELBSecurityGroup
+        - !GetAtt ELBSecurityGroup.GroupId 
 
   ALBListener:
       Type: AWS::ElasticLoadBalancingV2::Listener
@@ -52,7 +64,7 @@ Resources:
       DependsOn:
         - ECSTargetGroup
       
-Output:
+Outputs:
 
   ELBSecurityGroup:
     Description: Application Load Balancer Security Group
@@ -71,4 +83,12 @@ Output:
     Value: !Ref 'ApplicationLoadBalancer'
     Export:
       Name: ApplicationLoadBalancer
+
+  ECSFargateContainersSG:
+    Description: ECSFargateContainersSG 
+    Value: !Ref 'ECSFargateContainersSG'
+    Export:
+      Name: ECSFargateContainersSG
     
+    
+  

@@ -1,0 +1,102 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  create ECS Cluster 
+
+Parameters:
+  VpcStack:
+    Type: String
+    Description: Name of VPC stack to build off of
+    Default: vpc-stack
+
+  EcsClusterStack:
+    Type: String
+    Description: Name of ECS Cluster stack to build off of
+    Default: ecs-cluster-stack
+
+  Image:
+    Type: String
+    Description: URI of image you would like to use
+    Default: '424416207406.dkr.ecr.us-east-2.amazonaws.com/ecr-repo:latest'
+
+Resources:
+
+  Role:
+    Type: 'AWS::IAM::ServiceLinkedRole'
+    Properties:
+      AWSServiceName: ecs-tasks.amazonaws.com"
+      Description: ecs-task execution role
+      #CustomSuffix: TestSuffix
+
+  TDSecurityGroup:
+       Type: AWS::EC2::SecurityGroup
+       Properties:
+           GroupDescription: 'Allow ELB traffic to target definition'
+           VpcId: !ImportValue VPCId
+           SecurityGroupIngress:
+                - IpProtocol: tcp
+                  FromPort: 80
+                  ToPort: 80
+                  CidrIp: 0.0.0.0/0
+  
+  FargateService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: ECS-Fargate
+       # Fn::ImportValue: !Sub ${EcsClusterStack}-ecs-cluster
+      #DeploymentController:
+      #  Type: ECS
+      DesiredCount: 2
+      #HealthCheckGracePeriodSeconds: 60
+      LaunchType: FARGATE
+      LoadBalancers:
+        - ContainerName: pythonapp
+          ContainerPort: 8181
+          TargetGroupArn: 
+            - Fn::ImportValue: ECSTargetGroup
+      NetworkConfiguration:
+          AwsvpcConfiguration:
+            SecurityGroups: !Ref TDSecurityGroup 
+              #- Fn::ImportValue: !Sub ${EcsClusterStack}-default-security-group
+            Subnets:
+              - Fn::ImportValue: PrivateSubnet1
+              - Fn::ImportValue: PrivateSubnet2
+      TaskDefinition: !Ref FargateServiceTaskDefinition
+
+  #FargateServiceLogGroup:
+  #  Type: AWS::Logs::LogGroup
+  #  Properties:
+  #    RetentionInDays: 7
+
+  FargateServiceTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+        - Name: Myapp
+          Essential: true
+          Image: !Ref Image
+          #LogConfiguration:
+          #    LogDriver: awslogs
+          #    Options:
+          #      awslogs-group: !Ref FargateServiceLogGroup
+          #      awslogs-stream-prefix: hello-world-container
+          #      awslogs-region: !Ref AWS::Region
+          PortMappings:
+            - ContainerPort: 8081
+              HostPort: 8081
+              Protocol: tcp
+      Cpu: '256'
+      ExecutionRoleArn: !Ref Role
+        #Fn::ImportValue: !Sub ${EcsClusterStack}-default-role
+      Memory: '512'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        -  FARGATE
+      TaskRoleArn: !Ref Role
+        #Fn::ImportValue: !Sub ${EcsClusterStack}-default-role
+
+Outputs:
+  FargateServiceName:
+    Description: A reference to the created Fargate Service
+    Value: !GetAtt FargateService.Name
+    Export:
+      Name: !Sub ${AWS::StackName}-fargate-service-name
